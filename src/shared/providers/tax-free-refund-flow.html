@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tax-Free Refund App — User Flow</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #f8f8f6;
+    padding: 32px 24px;
+    min-height: 100vh;
+  }
+  h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #1a1a18;
+    margin-bottom: 6px;
+  }
+  p.sub {
+    font-size: 13px;
+    color: #73726c;
+    margin-bottom: 24px;
+  }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 28px;
+    padding: 12px 16px;
+    background: #fff;
+    border: 1px solid #e2e0d8;
+    border-radius: 10px;
+    font-size: 12px;
+    color: #3d3d3a;
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+  #diagram {
+    background: #fff;
+    border: 1px solid #e2e0d8;
+    border-radius: 12px;
+    padding: 24px;
+    overflow: auto;
+  }
+  #diagram svg { max-width: 100%; }
+</style>
+</head>
+<body>
+
+<h1>Tax-Free Refund App (Japan) — User Flow</h1>
+<p class="sub">Shop-facing tax-free refund processing for foreign tourists</p>
+
+<div class="legend">
+  <div class="legend-item"><div class="dot" style="background:#EEEDFE;border:1px solid #534AB7"></div> Auth / Route</div>
+  <div class="legend-item"><div class="dot" style="background:#E1F5EE;border:1px solid #0F6E56"></div> Stepper steps</div>
+  <div class="legend-item"><div class="dot" style="background:#E6F1FB;border:1px solid #185FA5"></div> Input methods</div>
+  <div class="legend-item"><div class="dot" style="background:#FAEEDA;border:1px solid #BA7517"></div> Decision / branch</div>
+  <div class="legend-item"><div class="dot" style="background:#EAF3DE;border:1px solid #3B6D11"></div> Success</div>
+  <div class="legend-item"><div class="dot" style="background:#F1EFE8;border:1px solid #5F5E5A"></div> Context / global state</div>
+</div>
+
+<div id="diagram">
+<pre class="mermaid">
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "primaryColor": "#EEEDFE",
+    "primaryTextColor": "#3C3489",
+    "primaryBorderColor": "#534AB7",
+    "lineColor": "#888780",
+    "secondaryColor": "#E1F5EE",
+    "tertiaryColor": "#FAEEDA",
+    "background": "#ffffff",
+    "mainBkg": "#ffffff",
+    "fontSize": "14px",
+    "nodeBorder": "#534AB7",
+    "clusterBkg": "#f8f8f6"
+  }
+}}%%
+
+flowchart TD
+    Browser(["Browser / Device"]) --> Login
+
+    Login["🔐 /login
+    Enter login ID + password"]
+
+    Login -->|"POST /auth/token"| AuthOK{"Auth\nsuccessful?"}
+    AuthOK -->|"❌ No"| Login
+    AuthOK -->|"✅ Yes
+    shop_name, use_shopify,
+    use_trj, product_list"| Guard
+
+    Guard["🛡️ PrivateRoute guard
+    Unauthenticated → redirect to /login"]
+
+    Guard --> Step0
+
+    subgraph STEPPER ["/ — 5-Step MUI Stepper (single page)"]
+        direction TB
+
+        Step0["📦 Step 0 — Order
+        Set sale date · order ID · email"]
+
+        Step0 --> UseShopify{"use_shopify?"}
+
+        UseShopify -->|"true"| Shopify["🛍️ Shopify order code
+        Fetch: products, tax,
+        discounts, email from API"]
+
+        UseShopify -->|"false"| Manual["✏️ Manual entry
+        name · type: general/consumable
+        quantity · price with/without tax"]
+
+        Shopify --> MergeOrder((" "))
+        Manual --> MergeOrder
+
+        MergeOrder --> Step1
+
+        Step1["🛂 Step 1 — Passport
+        name · nationality · gender · DOB
+        passport no · visa status · landing date
+        permit no · validity · issuing country
+        optional: note field"]
+
+        Step1 --> ScanMethod{"Scan\nmethod?"}
+
+        ScanMethod -->|"Camera"| QR["📷 QR Code Scanner
+        Camera-based scan"]
+
+        ScanMethod -->|"AI OCR"| Blink["🤖 BlinkID OCR
+        @microblink/blinkid
+        AI passport / ID scanning"]
+
+        QR --> MergeScan((" "))
+        Blink --> MergeScan
+
+        MergeScan --> Step2
+
+        Step2["💳 Step 2 — Refund Method
+        Branched by use_trj flag"]
+
+        Step2 --> UseTRJ{"use_trj?"}
+
+        UseTRJ -->|"true"| TRJ["🏦 TaxRefundJapan
+        Send refund via TRJ service"]
+
+        UseTRJ -->|"false"| Wise["💸 Wise
+        targetAccountId
+        targetCurrency · residenceCountry
+        chineseState (optional)"]
+
+        TRJ --> MergeRefund((" "))
+        Wise --> MergeRefund
+
+        MergeRefund --> Step3
+
+        Step3["📜 Step 3 — Privacy Policy / Terms
+        Two tabs: English + Japanese
+        Must scroll to bottom of each tab
+        ☑️ Checkbox to accept — required"]
+
+        Step3 --> Step4
+
+        Step4["📋 Step 4 — Quote / Review
+        Full summary: order items · tax amount
+        passport info · refund method
+        ✏️ Edit icons → jump back to any step"]
+
+        Step4 -->|"✏️ Edit"| Step0
+        Step4 -->|"✅ Confirm
+        POST full form to API"| APIDecision{"API\nresponse?"}
+
+        APIDecision -->|"❌ Error"| Step4
+    end
+
+    APIDecision -->|"✅ Success
+    🥁 Wadaiko drum sound plays"| Completed
+
+    Completed["🎉 /completed
+    Lottie success animation
+    Button: Start New Refund Application"]
+
+    Completed -->|"Start New Refund Application
+    Navigate to / — reset stepper"| Step0
+
+    AuthContext(["⚙️ AuthContext — global state
+    use_shopify · use_trj · shop_name
+    Drives ALL branching decisions"])
+
+    style Browser fill:#F1EFE8,stroke:#5F5E5A,color:#2C2C2A
+    style Login fill:#EEEDFE,stroke:#534AB7,color:#26215C
+    style AuthOK fill:#FAEEDA,stroke:#BA7517,color:#412402
+    style Guard fill:#FAEEDA,stroke:#BA7517,color:#412402
+    style Step0 fill:#E1F5EE,stroke:#0F6E56,color:#04342C
+    style UseShopify fill:#FAEEDA,stroke:#BA7517,color:#412402
+    style Shopify fill:#E6F1FB,stroke:#185FA5,color:#042C53
+    style Manual fill:#E6F1FB,stroke:#185FA5,color:#042C53
+    style MergeOrder fill:#D3D1C7,stroke:#888780,color:#2C2C2A
+    style Step1 fill:#E1F5EE,stroke:#0F6E56,color:#04342C
+    style ScanMethod fill:#FAEEDA,stroke:#BA7517,color:#412402
+    style QR fill:#E6F1FB,stroke:#185FA5,color:#042C53
+    style Blink fill:#E6F1FB,stroke:#185FA5,color:#042C53
+    style MergeScan fill:#D3D1C7,stroke:#888780,color:#2C2C2A
+    style Step2 fill:#E1F5EE,stroke:#0F6E56,color:#04342C
+    style UseTRJ fill:#FAEEDA,stroke:#BA7517,color:#412402
+    style TRJ fill:#EEEDFE,stroke:#534AB7,color:#26215C
+    style Wise fill:#EEEDFE,stroke:#534AB7,color:#26215C
+    style MergeRefund fill:#D3D1C7,stroke:#888780,color:#2C2C2A
+    style Step3 fill:#E1F5EE,stroke:#0F6E56,color:#04342C
+    style Step4 fill:#E1F5EE,stroke:#0F6E56,color:#04342C
+    style APIDecision fill:#FAEEDA,stroke:#BA7517,color:#412402
+    style Completed fill:#EAF3DE,stroke:#3B6D11,color:#173404
+    style AuthContext fill:#F1EFE8,stroke:#5F5E5A,color:#2C2C2A
+    style STEPPER fill:#fafaf8,stroke:#c2c0b6,color:#3d3d3a
+</pre>
+</div>
+
+<script>
+mermaid.initialize({
+  startOnLoad: true,
+  theme: 'base',
+  flowchart: {
+    curve: 'basis',
+    padding: 24,
+    htmlLabels: true
+  },
+  themeVariables: {
+    primaryColor: '#EEEDFE',
+    primaryTextColor: '#3C3489',
+    primaryBorderColor: '#534AB7',
+    lineColor: '#888780',
+    secondaryColor: '#E1F5EE',
+    tertiaryColor: '#FAEEDA',
+    background: '#ffffff',
+    mainBkg: '#ffffff',
+    fontSize: '14px',
+    clusterBkg: '#f8f8f6',
+    clusterBorder: '#c2c0b6'
+  }
+});
+</script>
+</body>
+</html>
